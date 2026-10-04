@@ -1,0 +1,28 @@
+# Credentials and cluster access: never commit
+kubeconfig*
+*.kubeconfig
+.env
+.env.*
+*.pem
+*.key
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+crash.log
+crash.*.log
+
+# Raw evidence:redacted copies under docs/evidence/
+evidence-raw/
+
+# Python, editors, macOS
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+.windsurf/
+.DS_Store
