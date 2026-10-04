@@ -1,0 +1,1 @@
+github_oidc_subject = "repo:Owner@owenerId/secure-container-pipeline@repoId:ref:refs/heads/main"
