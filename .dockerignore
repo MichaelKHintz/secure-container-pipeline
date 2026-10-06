@@ -1,0 +1,13 @@
+.git
+.github
+baseline
+docs
+infra
+k8s
+clusters
+policies
+falco
+tests
+scripts
+**/__pycache__
+*.md
