@@ -29,12 +29,26 @@ variable "github_oidc_subject" {
     type        = string
 }
 
+data "aws_caller_identity" "current" {}
+
 #One customer-managed key for ECR images and EKS secrets
 resource "aws_kms_key" "lab" {
     description             = "secure-container-pipeline: ECR images and EKS secrets"
     enable_key_rotation     = true
     deletion_window_in_days = 7
+
+    policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+            Sid       = "EnableIAMUserPermissions"
+            Effect    = "Allow"
+            Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+            Action    = "kms:*"
+            Resource  = "*"
+        }]
+    })   
 }
+
 
 resource "aws_kms_alias" "lab" {
     name          = "alias/secure-container-pipeline"
@@ -76,8 +90,8 @@ data "aws_iam_policy_document" "github_trust" {
         }
         condition {
             test        = "StringEquals"
-            variable    = "token.actions.githubusercontent.com:sub"
-            values      = [var.github_oidc_subject]
+            variable = "token.actions.githubusercontent.com:sub"
+            values = [var.github_oidc_subject]
         }
     }
 }
