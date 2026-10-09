@@ -43,7 +43,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-      - image: ${ECR_REGISTRY}/secure-container-pipeline@sha256:91517607bdb7967cd5614823f6573176d9c5a3f83ef04fbeaf1c2292525eb2d1
+      - image: ${ECR_REGISTRY}/secure-container-pipeline@sha256:e6231fd102c3256f86098a461360db7426d5225e4d62f94e732d128a3cf499f7
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
