@@ -7,7 +7,7 @@ COPY app/requirements.txt .
 RUN pip install --no-cache-dir --target /build/deps -r requirements.txt
 
 # Runtime stage: no shell, no package manager, non-root user.
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:774595d652a294b54c9bd575b2d9fdd1a4b47547dc17b8bfa4c0e953c64855b3
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:83aa8d4f74a4d7f7cf2d472054139bef71a927b76c680c0f2e1021d6b1d6d732
 LABEL org.opencontainers.image.source="https://github.com/MichaelKHintz/secure-container-pipeline"
 WORKDIR /app
 ENV PYTHONPATH=/app/deps \
