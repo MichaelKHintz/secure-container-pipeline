@@ -16,12 +16,12 @@ metadata:
   name: fastapi-app
   namespace: secure-app
 spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
   selector:
     app.kubernetes.io/name: fastapi-app
-    ports:
-    - name: http
-      port: 80
-      targetPort: http
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -43,7 +43,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-      - image: ${ECR_REGISTRY}/secure-container-pipeline@sha256:e6231fd102c3256f86098a461360db7426d5225e4d62f94e732d128a3cf499f7
+      - image: ${ECR_REGISTRY}/secure-container-pipeline@sha256:e9359db096c473e0c0ba00e8e2547ae5cb15a8c0ee06bd140d7b71a95f17e802
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
