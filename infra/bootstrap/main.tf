@@ -22,7 +22,10 @@ variable "budget_email" {
 }
 
 resource "aws_s3_bucket" "tfstate" {
-    bucket = var.state_bucket_name
+  #checkov:skip=CKV_AWS_18:Single-user lab; a separate access-log bucket is not justified for state storage
+  #checkov:skip=CKV_AWS_144:Single-region lab state bucket; cross-region replication not justified
+  #checkov:skip=CKV2_AWS_62:No consumers for bucket events in a single-user lab
+  bucket = var.state_bucket_name
 }
 
 resource "aws_s3_bucket_versioning" "tfstate" {
