@@ -9,4 +9,4 @@ images:
   - name: fastapi-app
     newName: ${ECR_REGISTRY}/secure-container-pipeline
     # Placeholder on main. The deploy job writes the real signed digest into the rendered manifest on the deploy branch
-sha256:0000000000000000000000000000000000000000000000000000000000000000
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
