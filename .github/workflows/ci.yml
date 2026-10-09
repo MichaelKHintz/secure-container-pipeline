@@ -1,0 +1,229 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Deny by default; each job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: secure-container-pipeline
+  # Pins: fill once, then update deliberately.
+  TRIVY_VERSION: v0.75.0
+  SEMGREP_VERSION: "1.180.0"  # from pypi.org/project/semgrep
+  CHECKOV_VERSION: "3.3.26"   # from pypi.org/project/checkov
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # for uploading SARIF results to the Security tab
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Semgrep
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+      - name: Semgrep (fails on Error severity)
+        run: |
+          semgrep scan \
+            --config p/python --config p/security-audit --config p/dockerfile \
+            --severity ERROR --error \
+            --sarif --output semgrep.sarif
+      - name: Print findings
+        if: failure()
+        run: |
+          jq -r '.runs[].results[] | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' semgrep.sarif
+      - name: Upload to the Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  sca:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Trivy dependency scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: app
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+
+  iac:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Checkov
+        run: pipx install "checkov==${CHECKOV_VERSION}"
+      - name: Render manifests
+        run: mkdir -p rendered && kustomize build k8s > rendered/app.yaml
+      - name: Checkov on Kubernetes manifests
+        run: checkov -f rendered/app.yaml --framework kubernetes --compact
+      - name: Checkov on Terraform
+        run: checkov -d infra --framework terraform --compact
+
+  image-pr:
+    if: github.event_name == 'pull_request'
+    needs: [sast, sca, iac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-actions@v4
+      - name: Build (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: scp:pr-${{ github.sha }}
+          cache-from: type=gha  # PRs read the cache but never write it
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: scp:pr-${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [sast, sca, iac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC: assume the AWS push role, and sign keylessly
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Assume the ECR push role (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_PUSH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Log in to ECR
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo "IMAGE=${REGISTRY}/${ECR_REPOSITORY}" >> "$GITHUB_ENV"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build and push (immutable tag)
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false # one manifest per digest; Syft and cosign cover SBOM and signing
+          sbom: false
+          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Trivy scan of the exact pushed digest
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign (keyless, GitHub OIDC)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - name: Verify (the same identity Kyverno will require)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/ci.yml@refs/heads/main" > /dev/null
+      - name: SBOM (Syft, SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: Redact the account ID from the SBOM
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: sed -i "s/${AWS_ACCOUNT_ID}/<aws-account-id>/g" sbom.spdx.json
+      - name: Publish the SBOM as a build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+  
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit to the deploy branch
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Render manifests with signed digest
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          yq -i '.images[0].digest = strenv(DIGEST)' k8s/kustomization.yaml
+          mkdir -p "$RUNNER_TEMP/rendered"
+          kustomize build k8s > "$RUNNER_TEMP/rendered/app.yaml"
+          # Fail if a real registry (and so the account ID) ever reaches Git
+          grep -q 'image: ${ECR_REGISTRY}/' "$RUNNER_TEMP/rendered/app.yaml"
+      - name: Check out the deploy branch
+        uses: actions/checkout@v7
+        with:
+          ref: deploy
+          path: deploy-branch
+      - name: Commit and push
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          mkdir -p deploy-branch/rendered
+          cp "$RUNNER_TEMP/rendered/app.yaml" deploy-branch/rendered/app.yaml
+          cd deploy-branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rendered/app.yaml
+          if git diff --cached --quiet; then echo "No change"; exit 0; fi
+          git commit -m "deploy ${GITHUB_SHA::7} as ${DIGEST}"
+          git push
