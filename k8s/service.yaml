@@ -7,7 +7,7 @@ spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: fastapi-app
-    ports:
-      - name: http
-        port: 80
-        targetPort: http
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
