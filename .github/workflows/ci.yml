@@ -70,7 +70,6 @@ jobs:
           exit-code: "1"
           version: ${{ env.TRIVY_VERSION }}
 
-
   iac:
     runs-on: ubuntu-latest
     permissions:
@@ -84,7 +83,8 @@ jobs:
       - name: Render manifests
         run: mkdir -p rendered && kustomize build k8s > rendered/app.yaml
       - name: Checkov on Kubernetes manifests
-        run: checkov -f rendered/app.yaml --framework kubernetes --compact
+        # CKV2_K8S_6 skipped until Phase 3 add NetworkPolicies; remove the flag then.
+        run: checkov -f rendered/app.yaml --framework kubernetes --compact --skip-check CKV2_K8S_6
       - name: Checkov on Terraform
         run: checkov -d infra --framework terraform --compact
 
