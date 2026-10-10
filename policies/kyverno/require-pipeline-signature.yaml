@@ -1,0 +1,43 @@
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: require-pipeline-signature
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  webhookConfiguration:
+    timeoutSeconds: 15
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: secure-app
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    - expression: "true"   # every image in this namespace, from any registry
+  credentials:
+    providers: [amazon]
+  validationConfigurations:
+    required: true
+    mutateDigest: true
+    verifyDigest: true
+  attestors:
+    - name: pipeline
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              subject: https://github.com/MichaelKHintz/secure-container-pipeline/.github/workflows/ci.yml@refs/heads/main
+        ctlog:
+          url: https://rekor.sigstore.dev
+  validations:
+    - expression: >-
+        images.containers.map(image,
+          verifyImageSignatures(image, [attestors.pipeline])).all(e, e > 0)
+      message: Every image in secure-app must be signed by this repo's ci.yml on main.
