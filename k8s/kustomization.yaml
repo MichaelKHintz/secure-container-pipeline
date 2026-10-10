@@ -5,6 +5,7 @@ resources:
   - serviceaccount.yaml
   - deployment.yaml
   - service.yaml
+  - networkpolicies.yaml
 images:
   - name: fastapi-app
     newName: ${ECR_REGISTRY}/secure-container-pipeline
