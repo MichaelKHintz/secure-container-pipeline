@@ -1,0 +1,31 @@
+driver:
+  kind: modern_ebpf
+tty: true
+customRules:
+  custom-rules.yaml: |-
+    - rule: Unexpected process in secure-app
+      desc: >
+        The FastAPI container runs a single Python process and never needs
+        to start another. Any new process (kubectl exec, an RCE payload) is suspicious.
+      condition: >
+        spawned_process and container
+        and k8s.ns.name = "secure-app"
+        and proc.vpid != 1
+      output: >
+        Unexpected process in secure-app | command=%proc.cmdline parent=%proc.pname
+        uid=%user.uid pod=%k8s.pod.name image=%container.image.repository
+      priority: WARNING
+      tags: [container, process, mitre_execution, custom]
+
+    - rule: Write below binary dir in workload container
+      desc: >
+        Scoped version of the upstream sandbox rule, limited to workload namespaces.
+      condition: >
+        open_write and container
+        and fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin)
+        and not k8s.ns.name in (kube-system, kyverno, falco, flux-system)
+      output: >
+        Write below binary dir | file=%fd.name command=%proc.cmdline
+        pod=%k8s.pod.name ns=%k8s.ns.name image=%container.image.repository
+      priority: ERROR
+      tags: [container, filesystem, mitre_persistence, custom]
