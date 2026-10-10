@@ -34,6 +34,7 @@ locals {
 }
 
 data "aws_availability_zones" "available" {
+  #checkov:skip=CKV_AWS_394:Only the first two zones are used; revisit if zone pinning is needed
   state = "available"
 }
 
@@ -47,6 +48,7 @@ data "aws_ecr_repository" "app" {
 }
 
 module "vpc" {
+  #checkov:skip=CKV_TF_1:Registry module with a version constraint; Dependabot proposes updates
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.0"
 
@@ -65,6 +67,7 @@ module "vpc" {
 }
 
 module "eks" {
+  #checkov:skip=CKV_TF_1:Registry module with a version constraint; Dependabot proposes updates
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 21.0"
 
