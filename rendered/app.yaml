@@ -92,3 +92,37 @@ spec:
       - emptyDir:
           sizeLimit: 16Mi
         name: tmp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-client-to-app
+  namespace: secure-app
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: frontend
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: api-client
+    ports:
+    - port: 8000
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: fastapi-app
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secure-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
