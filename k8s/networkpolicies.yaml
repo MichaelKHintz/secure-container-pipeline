@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secure-app
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-client-to-app
+  namespace: secure-app
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: fastapi-app
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: frontend
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-client
+      ports:
+        - protocol: TCP
+          port: 8000
