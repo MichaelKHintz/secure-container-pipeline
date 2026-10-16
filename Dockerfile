@@ -1,5 +1,5 @@
 # Build stage: same Python version and Debian release as the runtime, so compiled wheels (pydantic-core) match the runtime ABI.
-FROM public.ecr.aws/docker/library/python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS build
+FROM public.ecr.aws/docker/library/python:3.15-slim-trixie@sha256:f48fda6d59b2b3437781d1c3ccf4aa0e26ae871de3cdd758b49ab45ee7291619 AS build
 WORKDIR /build
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir --target /build/deps -r requirements.txt
